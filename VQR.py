@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cp
 import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 
 def distmat(x, y):
@@ -53,7 +57,7 @@ class VectorQuantileRegression:
             return None
 
         elif d == 1:
-            u = np.arange(0, 1+step, step).T
+            u = np.arange(0, 1+step, step).reshape(-1,1)
 
         elif d == 2:
             x = np.arange(0, 1+step, step)
@@ -102,7 +106,6 @@ class VectorQuantileRegression:
         u = self.get_U(d, step)
         U = u.T
         self.U = U
-
         n = Y.shape[1]
         m = U.shape[1]
 
@@ -156,7 +159,7 @@ class VectorQuantileRegression:
         for i in range(d):
             dfU['beta_'+str(i)] = (dfU.loc[list(dfU[str(i)+"_follower"])][['b']].reset_index(drop=True) - dfU[['b']])/step
 
-        beta = ['beta_'+str(i) for i in range(2)]
+        beta = ['beta_'+str(i) for i in range(d)]
         dfU['beta'] = dfU[beta].apply(lambda x: np.vstack(x), axis=1)
 
         return dfU
@@ -188,21 +191,22 @@ class VectorQuantileRegression:
             pos = df[self.dim].apply(lambda x: list(np.around(x, 3)), axis=1)
             beta = df['beta'][pos == ser].iloc[0]
 
-            xeval = X.apply(lambda x: np.array(x).reshape(-1,1), axis=1).to_frame()
+            xeval = X.apply(lambda x: np.array(x).reshape(-1, 1), axis=1).to_frame()
             xeval.columns = ['X']
             df_res = xeval.copy()
 
             if self.q == 1:
                 df_res['y_pred'] = df_res['X'].apply(lambda x: beta*x)
             else:
-                df_res['y_pred'] = df_res['X'].apply(lambda x: np.matmul(beta,x))
+                df_res['y_pred'] = df_res['X'].apply(lambda x: np.matmul(beta, x))
 
             return df_res
 
         elif argument == "U":
-            if xeval.shape != (self.q,):
+            X = X.to_numpy().reshape(-1, 1)
+            if X.shape != (self.q,) and X.shape != (self.q, 1):
                 print("If argument = U then you can only give one observation.")
-                return
+                return None
 
             if self.df is None:
                 df = self.get_dfU(U, b, step)
@@ -218,7 +222,41 @@ class VectorQuantileRegression:
             print("argument not recognized")
             return None
 
-#    def plot_surface():
-#        "une fonction pour ploter les surfaces"
+    def plot_surface(self, X):
 
-#    def plot_lines():
+        if self.d == 2:
+            df = self.predict(X)
+
+            g = int(np.sqrt(df.shape[0]))
+            fig = plt.figure()
+            ax = fig.gca(projection='3d')
+            y_1_hat = df['y_pred'].apply(lambda x: x[0][0])
+            y_2_hat = df['y_pred'].apply(lambda x: x[1][0])
+            y_1_hat = np.abs(y_1_hat)
+            y_2_hat = np.abs(y_2_hat)
+
+            x = np.reshape(df[0].ravel(), (g, g))
+            y = np.reshape(df[1].ravel(), (g, g))
+            z1 = np.reshape(y_1_hat.ravel(), (g, g))
+            z2 = np.reshape(y_2_hat.ravel(), (g, g))
+
+            ax.plot_surface(-x, y, z1, cmap=cm.coolwarm,
+                            linewidth=0, antialiased=False)
+
+            ax.set_xlabel('U1 axis')
+            ax.set_ylabel('U2 axis')
+            ax.set_zlabel('Y1 axis')
+            plt.show()
+
+            fig = plt.figure()
+            ax = fig.gca(projection='3d')
+            ax.plot_surface(-x, y, z2, cmap=cm.coolwarm,
+                            linewidth=0, antialiased=False)
+            ax.set_xlabel('U1 axis')
+            ax.set_ylabel('U2 axis')
+            ax.set_zlabel('Y2 axis')
+            plt.show()
+
+        elif self.d == 1:
+            df = self.predict(X)
+            plt.plot(df[0].ravel(), df['y_pred'].apply(lambda x: np.abs(x)[0][0]))
