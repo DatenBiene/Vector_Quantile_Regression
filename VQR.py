@@ -196,9 +196,9 @@ class VectorQuantileRegression:
             df_res = xeval.copy()
 
             if self.q == 1:
-                df_res['y_pred'] = df_res['X'].apply(lambda x: beta*x)
+                df_res['y_pred'] = df_res['X'].apply(lambda x: beta*x/2)
             else:
-                df_res['y_pred'] = df_res['X'].apply(lambda x: np.matmul(beta, x))
+                df_res['y_pred'] = df_res['X'].apply(lambda x: np.matmul(beta, x)/2)
 
             return df_res
 
@@ -214,7 +214,7 @@ class VectorQuantileRegression:
             else:
                 df = self.df
 
-            df['y_pred'] = df['beta'].apply(lambda x: np.matmul(x, X))
+            df['y_pred'] = df['beta'].apply(lambda x: np.matmul(x, X)/2)
 
             return df[self.dim + ['y_pred']]
 
