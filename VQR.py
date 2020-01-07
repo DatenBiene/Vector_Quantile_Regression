@@ -1,11 +1,8 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import cvxpy as cp
 import pandas as pd
-from mpl_toolkits.mplot3d import Axes3D
+import cvxpy as cp
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 
 def distmat(x, y):
@@ -88,6 +85,38 @@ class VectorQuantileRegression:
                           y1.flatten(), z1.flatten()]).T
         return u
 
+    def get_dfU(self, U, b, step):
+        u = U.T
+        d = u.shape[1]
+        dfU = pd.DataFrame(u)
+        dim = [i for i in range(d)]
+        self.dim = dim
+        dfU[[str(i)+"_follower" for i in list(dfU.columns)]] = dfU[dfU.columns]
+
+        for k in range(d):
+
+            dfU_temp = dfU.copy()
+            dfU_temp[k] = dfU_temp[k].apply(
+                                        lambda x: x+step if x < 1 else x-step)
+
+            find_in = list(dfU[dim].apply(
+                                    lambda x: list(np.around(x, 3)), axis=1))
+            dfU[str(k)+"_follower"] = dfU_temp[dim].apply(
+                        lambda x: list(np.around(x, 3)), axis=1
+                                                            ).apply(
+                                                    lambda x: find_in.index(x)
+                                                                    )
+
+        dfU['b'] = pd.DataFrame(b).apply(np.array, axis=1)
+
+        for i in range(d):
+            dfU['beta_'+str(i)] = (dfU.loc[list(dfU[str(i)+"_follower"])][['b']].reset_index(drop=True) - dfU[['b']])/step
+
+        beta = ['beta_'+str(i) for i in range(d)]
+        dfU['beta'] = dfU[beta].apply(lambda x: np.vstack(x), axis=1)
+
+        return dfU
+
     def fit(self, X, Y, step=0.05, verbose=False):
         Y = Y.to_numpy().T
         if self.order > 1:
@@ -131,38 +160,10 @@ class VectorQuantileRegression:
         self.result = result
         self.b = b
         self.psi = psi
+        df = self.get_dfU(U, b, step)
+        self.df = df
 
-    def get_dfU(self, U, b, step):
-        u = U.T
-        d = u.shape[1]
-        dfU = pd.DataFrame(u)
-        dim = [i for i in range(d)]
-        self.dim = dim
-        dfU[[str(i)+"_follower" for i in list(dfU.columns)]] = dfU[dfU.columns]
 
-        for k in range(d):
-
-            dfU_temp = dfU.copy()
-            dfU_temp[k] = dfU_temp[k].apply(
-                                        lambda x: x+step if x < 1 else x-step)
-
-            find_in = list(dfU[dim].apply(
-                                    lambda x: list(np.around(x, 3)), axis=1))
-            dfU[str(k)+"_follower"] = dfU_temp[dim].apply(
-                        lambda x: list(np.around(x, 3)), axis=1
-                                                            ).apply(
-                                                    lambda x: find_in.index(x)
-                                                                    )
-
-        dfU['b'] = pd.DataFrame(b).apply(np.array, axis=1)
-
-        for i in range(d):
-            dfU['beta_'+str(i)] = (dfU.loc[list(dfU[str(i)+"_follower"])][['b']].reset_index(drop=True) - dfU[['b']])/step
-
-        beta = ['beta_'+str(i) for i in range(d)]
-        dfU['beta'] = dfU[beta].apply(lambda x: np.vstack(x), axis=1)
-
-        return dfU
 
     def predict(self, X=None, u_quantile=None, argument="U"):
 
@@ -177,14 +178,9 @@ class VectorQuantileRegression:
         if self.order > 1:
             X = add_order(X, self.order)
         m = self.m
+        df = self.df
 
         if argument == "X":
-
-            if self.df is None:
-                df = self.get_dfU(U, b, step)
-                self.df = df
-            else:
-                df = self.df
 
             ser = pd.Series([u_quantile]*m)
 
@@ -208,12 +204,6 @@ class VectorQuantileRegression:
                 print("If argument = U then you can only give one observation.")
                 return None
 
-            if self.df is None:
-                df = self.get_dfU(U, b, step)
-                self.df = df
-            else:
-                df = self.df
-
             df['y_pred'] = df['beta'].apply(lambda x: np.matmul(x, X)/2)
 
             return df[self.dim + ['y_pred']]
@@ -222,7 +212,7 @@ class VectorQuantileRegression:
             print("argument not recognized")
             return None
 
-    def plot_surface(self, X):
+    def plot_surface(self, X, legend=None):
 
         if self.d == 2:
             df = self.predict(X)
@@ -259,4 +249,4 @@ class VectorQuantileRegression:
 
         elif self.d == 1:
             df = self.predict(X)
-            plt.plot(df[0].ravel(), df['y_pred'].apply(lambda x: np.abs(x)[0][0]))
+            plt.plot(df[0].ravel(), df['y_pred'].apply(lambda x: np.abs(x)[0][0]).ewm(span=3).mean(), label =legend)
